@@ -6,16 +6,18 @@ from clients import Client
 import copy
 import numpy as np
 
+from matplotlib import pyplot as plt
+
 
 class Server:
     def __init__(self, config):
         self.config = config
         self.model = self.load_model()
-        # print(self.model)
         self.clients = None
         self.client_index = []
         self.target_round = -1
-
+        self.acc = []
+        
     def run(self):
         self.connect_clients()
         # communication rounds
@@ -25,6 +27,9 @@ class Server:
             selected = self.clients_selection()
             logging.info("selected clients:{}".format(selected))
             info = self.clients.train(selected)
+           
+            if len(info['weights']) == 0:
+                continue
 
             logging.info("aggregate weights")
             # update glob model
@@ -32,8 +37,21 @@ class Server:
             self.model.load_state_dict(glob_weights)
             train_acc = self.getacc(info)
             test_acc, test_loss = self.test()
+            self.acc.append(test_acc)
             logging.info(
-                "training acc: {:.4f},test acc: {:.4f}, test_loss: {:.4f}\n".format(train_acc, test_acc, test_loss))
+                "training acc: {:.4f}, test acc: {:.4f}, test_loss: {:.4f}\n".format(train_acc, test_acc, test_loss))
+
+            data = info["loss"]
+            time = info["training_time"]
+            print(data, time)
+            fig, ax = plt.subplots()
+
+            ax.plot(time, data)
+            ax.set_xlim([pow(10, 0), pow(10, 2)])
+            ax.set_xscale('log')
+            plt.show()
+
+            self.plot(info)
             if test_acc > self.config.fl.target_accuracy:
                 self.target_round = round
                 logging.info("target achieved")
@@ -41,6 +59,16 @@ class Server:
 
             # broadcast glob weights
             self.clients.update(glob_weights)
+
+    def plot(self, info):
+        data = info["loss"]
+        time = info["training_time"]
+        fig, ax = plt.subplots()
+
+        ax.plot(time, data)
+        ax.set_xlim([pow(10, 0), pow(10, 2)])
+        ax.set_xscale('log')
+        plt.show()
 
     def fed_avg(self, info):
         weights = info["weights"]
